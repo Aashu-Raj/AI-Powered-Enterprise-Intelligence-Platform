@@ -12,7 +12,8 @@ Design:
 from typing import Any
 
 from loguru import logger
-from opensearchpy import AsyncOpenSearch, NotFoundError
+from opensearchpy._async.client import AsyncOpenSearch
+from opensearchpy.exceptions import NotFoundError
 
 from shared.config.settings import settings
 

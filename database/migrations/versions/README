@@ -1,0 +1,17 @@
+"""
+database/migrations/versions/README
+
+Place auto-generated Alembic migration files here.
+
+Generate a new migration:
+    alembic revision --autogenerate -m "short description"
+
+Apply migrations:
+    alembic upgrade head
+
+Rollback one step:
+    alembic downgrade -1
+
+View migration history:
+    alembic history --verbose
+"""
