@@ -1,0 +1,139 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AI-Powered Enterprise Intelligence Platform — Local Dev Stack
+# ─────────────────────────────────────────────────────────────────────────────
+# Usage:
+#   docker-compose up -d          → start all services
+#   docker-compose down -v        → stop and remove volumes
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PostgreSQL — relational store (metadata, users, tenants, docs) ──────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: ep_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: enterprise_platform
+      POSTGRES_USER: platform_user
+      POSTGRES_PASSWORD: changeme_strong_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init_scripts:/docker-entrypoint-initdb.d  # optional SQL init
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platform_user -d enterprise_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis — caching (embeddings, query results, sessions) ─────────────────
+  redis:
+    image: redis:7.2-alpine
+    container_name: ep_redis
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ── Qdrant — vector store (embeddings + metadata filters) ─────────────────
+  qdrant:
+    image: qdrant/qdrant:v1.10.1
+    container_name: ep_qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"   # REST API
+      - "6334:6334"   # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── OpenSearch — BM25 full-text search index ──────────────────────────────
+  opensearch:
+    image: opensearchproject/opensearch:2.15.0
+    container_name: ep_opensearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=Admin@123!
+      - plugins.security.disabled=true       # disable for local dev only
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ── Kafka (KRaft mode — no Zookeeper) ────────────────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.7.0
+    container_name: ep_kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_LOG_RETENTION_HOURS: 168
+      CLUSTER_ID: "enterprise-platform-cluster-1"
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list 2>/dev/null || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+
+  # ── MinIO — S3-compatible raw file storage ────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: ep_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web Console → http://localhost:9001
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+# ─────────────────────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+  redis_data:
+  qdrant_data:
+  opensearch_data:
+  kafka_data:
+  minio_data:
