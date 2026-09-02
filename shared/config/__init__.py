@@ -1,1 +1,0 @@
-# Shared config package
