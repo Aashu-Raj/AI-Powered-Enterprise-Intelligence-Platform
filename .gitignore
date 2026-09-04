@@ -65,6 +65,3 @@ temp/
 
 # Local Docker / database data (if ever mounted as a folder)
 postgres_data/
-
-#plan
-plan
